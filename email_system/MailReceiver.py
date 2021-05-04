@@ -43,11 +43,10 @@ class MailReceiver(MailSystem):
 
     def select(self,folder):
         try:
-            # _,folders=self.mail.list()
             # folders=[shlex.split(imaputf7decode(folder.decode()))[-1] for folder in folders]
-            # if folder in folders:
-            if self._folder!=None:
-                self.mail.close()
+
+            # if self._folder:
+            #     self.mail.close()
             res,_= self.mail.select(folder)
             if res=="OK":
                 self._folder=folder
@@ -65,22 +64,24 @@ class MailReceiver(MailSystem):
         """
         Извлекает письма из текущей выбранной папки с сервера по переданным uid
 
-        :type uids: List[int]
+        :type uids: List[str]
         """
-        email_messages=self._raw_by_uids(uids)
+        # email_messages=self._raw_by_uids(uids)
         emails: List[NecessaryEmail] = []
-
+        mails=self._raw_by_uids(uids)
         for i,uid in enumerate(uids):
-            necessary_email = NecessaryEmail(email_messages[i], uid, self._text_maker)
-            emails.append(necessary_email)
+            email_message=next(mails)
+            necessary_email = NecessaryEmail(email_message, uid, self._text_maker)
+            yield necessary_email
+            # emails.append(necessary_email)
 
-        return emails
+        # return emails
 
     def get_uids(self):
         """
         Возвращает список uid всех писем в текущей выбранной папке сервера
 
-        :rtype: List[int]
+        :rtype: List[str]
         """
         mail = self.mail
         # type,data=self.mail.recent()
@@ -89,11 +90,16 @@ class MailReceiver(MailSystem):
         return emails_uids
 
     def _raw_by_uids(self, uids:List[str]):
-        email_messages:List[EmailMessage]=[]
+        """
+
+        :rtype: EmailMessage
+        """
+        # email_messages:List[EmailMessage]=[]
         for uid in uids:
             result, data = self.mail.uid('fetch', uid, '(RFC822)')
             if result != "OK":
                 raise EmailUidError("Письма с заданным uid не существует",self._folder,uid=uid)
             raw_email = data[0][1]
-            email_messages.append(self._parser.parsebytes(raw_email))
-        return email_messages
+            yield self._parser.parsebytes(raw_email)
+            # email_messages.append(self._parser.parsebytes(raw_email))
+        # return email_messages

@@ -4,5 +4,5 @@ port=993
 login='gostev_z_s@sc.vsu.ru'
 password="writeline1499"
 folder="Test"
-spam_folder=folder#"Myspam"
+spam_folder="Myspam"
 ham_folder="Ham"

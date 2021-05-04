@@ -23,19 +23,19 @@ class LSTMClassifier(object):
     tensorboard: TensorBoard
     _model = Sequential
 
-    def __init__(self, navec_path, batch_size=64, embedding_size=300, train_size=0.8, epochs=20,model_file = "model.json",weights_file = "checkpoint.h5"):
+    def __init__(self, navec_path, batch_size=64, embedding_size=300,sequence_length=100, train_size=0.8, epochs=20,model_file = "model.json",weights_file = "checkpoint.h5"):
         self.model_file = model_file
         self.weights_file = weights_file
         self.navec_path = navec_path
         self.model_file = "model.json"
         self.weights_file = "checkpoint.h5"
         self.embedding_size = embedding_size
-        self.sequence_length = self.embedding_size
+        self.sequence_length = sequence_length
         self.batch_size = batch_size
         self.train_size = train_size
         self.epochs = epochs
 
-        self._tokenizer=MyTokenizer(self.navec_path,self.embedding_size)
+        self._tokenizer=MyTokenizer(self.navec_path,embedding_size,sequence_length)
 
     # def set_up(self,**kwargs):
     #     if os.path.exists(self.model_file) and os.path.exists(self.weights_file):
@@ -43,6 +43,13 @@ class LSTMClassifier(object):
     #     else:
     #         self._model=self.build_model(kwargs["embedding_data"])
     #         return self.train(kwargs['x'], kwargs['y'], self.weights_file)
+    def fit_tokenizer(self,data):
+        """
+        Необходимо выполнить перед build_model
+
+        :param data:
+        """
+        self._tokenizer.fit_tokenizer(data)
 
     def build_model(self, embedding_data, lstm_units=128):
         """
@@ -53,7 +60,6 @@ class LSTMClassifier(object):
         :type embedding_data: pd.Series Данные для Embedding слоя
         """
 
-        self._tokenizer.fit_tokenizer(embedding_data)
         embedding_matrix = self._tokenizer.get_embedding_matrix()
         model: Sequential = Sequential()
         model.add(Embedding(len(self._tokenizer.word_index) + 1,

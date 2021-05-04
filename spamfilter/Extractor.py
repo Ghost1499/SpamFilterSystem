@@ -3,6 +3,7 @@ from typing import List
 import csv
 
 import pandas as pd
+from progress.bar import IncrementalBar
 
 from email_system.NecessaryEmail import NecessaryEmail
 from email_system.MailReceiver import MailReceiver
@@ -30,7 +31,15 @@ class Extractor(object):
             existed_uids = uids
             new_uids = set(self.recieve_mail_system.get_uids())
             new_uids.difference_update(existed_uids)
-            return self.recieve_mail_system.by_uid(list(new_uids)), new_uids
+            mails=[]
+            # bar=IncrementalBar('Countdown',max=len(new_uids))
+            i=0
+            for mail in self.recieve_mail_system.by_uid(list(new_uids)):
+                print(i)
+                mails.append(mail)
+                i+=1
+            # bar.finish()
+            return mails, new_uids
         except SelectFolderError:
             return [], []
 
@@ -38,9 +47,11 @@ class Extractor(object):
         self.spam, self.spam_uids = self._extract_from(spam_folder, self.spam_uids)
         for mail in self.spam:
             mail.is_spam = True
+        print("Spam extracted")
         self.ham, self.ham_uids = self._extract_from(ham_folder, self.ham_uids)
         for mail in self.ham:
             mail.is_spam = False
+        print("Ham extracted")
 
     def get_dataframe(self) -> pd.DataFrame:
         """
@@ -76,7 +87,7 @@ class Extractor(object):
                 writer.writerow(["uid", "label", "subject", "text"])
             mails=self.spam+self.ham
             for mail in mails:
-                writer.writerow([mail.uid, int2label(int(mail.is_spam)), mail.prepared_subejct, mail.prepared_body])
+                writer.writerow([mail.uid, int2label[int(mail.is_spam)], mail.prepared_subejct, mail.prepared_body])
 
     @staticmethod
     def _write_uids(filename, uids):

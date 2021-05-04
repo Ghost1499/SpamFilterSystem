@@ -10,23 +10,30 @@ import regex as re
 class NecessaryEmail(object):
 
     def __init__(self, email_message: EmailMessage, uid: str, text_maker: html2text.HTML2Text):
-        # try:
-        self.email_message = email_message
-        self.uid = uid
-        self._text_maker = text_maker
-        self.subj_enc = email_message['subject']
-        self.subject = self._decode_subject(self.subj_enc)
-        if self.subject:
-            self.prepared_subejct = self.get_prepared_subject()
-        else:
-            self.prepared_subejct = ""
-        self.body_enc = email_message.get_body(preferencelist=["plain", "html"])
-        if self.body_enc:
-            self.body = self.extract_body(self.body_enc)
-            self.prepared_body = self.get_prepared_body()
-        else:
-            self.body = ""
-            self.prepared_body = ""
+        try:
+            self.email_message = email_message
+            self.uid = uid
+            self._text_maker = text_maker
+            self.subj_enc = email_message['subject']
+            self.subject = self._decode_subject(self.subj_enc)
+            if self.subject:
+                self.prepared_subejct = self.get_prepared_subject()
+            else:
+                self.prepared_subejct = ""
+        except Exception:
+            self.subject=""
+            self.prepared_subejct=""
+        try:
+            self.body_enc = email_message.get_body(preferencelist=["plain", "html"])
+            if self.body_enc:
+                self.body = self.extract_body(self.body_enc)
+                self.prepared_body = self.get_prepared_body()
+            else:
+                self.body = ""
+                self.prepared_body = ""
+        except Exception:
+            self.body=""
+            self.prepared_body=""
         self.is_spam = None
 
         # text = self.extract_text(body)

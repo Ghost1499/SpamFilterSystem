@@ -5,3 +5,5 @@ receiver=MailReceiver(config.server_imap,config.port,config.login,config.passwor
 spam_filter=SpamFilter(receiver,config.spam_folder,config.ham_folder)
 receiver.select("INBOX")
 result=spam_filter.classify(receiver.get_all())
+for res in result:
+    print(res[1])
