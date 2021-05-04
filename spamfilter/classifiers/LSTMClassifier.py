@@ -15,33 +15,42 @@ import time
 import pandas as pd
 import pickle
 
-from .Classifier import Classifier
+from spamfilter.classifiers.utils import label2int, int2label
+from spamfilter.Tokenizer import Tokenizer as MyTokenizer
 
 
-class LSTMClassifier(Classifier):
+class LSTMClassifier(object):
     tensorboard: TensorBoard
     _model = Sequential
 
-    def __init__(self, navec_path, batch_size=64, embedding_size=300, train_size=0.8, epochs=20):
-        super().__init__(navec_path, embedding_size)
+    def __init__(self, navec_path, batch_size=64, embedding_size=300, train_size=0.8, epochs=20,model_file = "model.json",weights_file = "checkpoint.h5"):
+        self.model_file = model_file
+        self.weights_file = weights_file
+        self.navec_path = navec_path
         self.model_file = "model.json"
         self.weights_file = "checkpoint.h5"
+        self.embedding_size = embedding_size
         self.sequence_length = self.embedding_size
         self.batch_size = batch_size
         self.train_size = train_size
         self.epochs = epochs
 
-    def set_up(self,**kwargs):
-        if os.path.exists(self.model_file) and os.path.exists(self.weights_file):
-            self.load_from_file()
-        else:
-            self._model=self._build_model(kwargs["embedding_data"])
-            self._train(kwargs['x'], kwargs['y'], self.weights_file)
+        self._tokenizer=MyTokenizer(self.navec_path,self.embedding_size)
 
-    def _build_model(self, embedding_data, lstm_units=128):
+    # def set_up(self,**kwargs):
+    #     if os.path.exists(self.model_file) and os.path.exists(self.weights_file):
+    #         self.load_model()
+    #     else:
+    #         self._model=self.build_model(kwargs["embedding_data"])
+    #         return self.train(kwargs['x'], kwargs['y'], self.weights_file)
+
+    def build_model(self, embedding_data, lstm_units=128):
         """
         Constructs the model,
         Embedding vectors => LSTM => 2 output Fully-Connected neurons with softmax activation
+
+        :type lstm_units: int Количество слоев
+        :type embedding_data: pd.Series Данные для Embedding слоя
         """
 
         self._tokenizer.fit_tokenizer(embedding_data)
@@ -58,32 +67,54 @@ class LSTMClassifier(Classifier):
         model.add(Dense(2, activation="softmax"))
         # compile as rmsprop optimizer
         # aswell as with recall metric
-        model.compile(optimizer="rmsprop", loss="categorical_crossentropy",
-                      metrics=["accuracy", keras_metrics.precision(), keras_metrics.recall()])
+
         # model.summary()
-        return model
+        self._model=model
 
-    def load_from_file(self):
-        model_filename=self.model_file
-        weights_filename=self.weights_file
-        if not os.path.exists(model_filename):
-            raise Exception("Model file does not exist")
-        if not os.path.exists(weights_filename):
-            raise Exception("Weights file does not exist")
-        try:
-            with open(model_filename, 'r') as f:
-                self._model = model_from_json(f.read())
-            self._model.load_weights(weights_filename)
-        except:
-            raise Exception("Can not load model or weights from file")
+    def compile_model(self):
+        self._model.compile(optimizer="rmsprop", loss="categorical_crossentropy",
+                      metrics=["accuracy", keras_metrics.precision(), keras_metrics.recall()])
 
-    def _train(self, x: pd.Series, y: pd.Series, weights_file="checkpoint.h5"):
+    def save_model(self,filename:str=None):
+        if filename:
+            model_file=filename
+        else:
+            model_file = self.model_file
+        model_json = self._model.to_json()
+
+        with open(model_file, 'w') as f:
+            f.write(model_json)
+
+    def load_model(self):
+        filename=self.model_file
+        if not os.path.exists(filename):
+            raise Exception("Указанный файл не существует")
+        with open(filename, 'r') as f:
+            self._model = model_from_json(f.read())
+
+    def load_weights(self):
+        filename = self.weights_file
+        if not os.path.exists(filename):
+            raise Exception("Указанный файл не существует")
+        self._model.load_weights(filename)
+
+    def train(self, x: pd.Series, y: pd.Series):
+        """
+        
+        
+        :rtype:
+        :param x: Обучающие данные
+        :param y: Выходные данные
+        :return: tuple [loss,accuracy,precision,recall]
+        """
         self.tensorboard = TensorBoard(f"logs/spam_classifier_{time.time()}", histogram_freq=0,
                                        write_graph=True, write_images=False)
-        y=[self.label2int(i) for i in y]
+        y=[label2int[i] for i in y]
+        y = to_categorical(y)
+        x=self._tokenizer.get_sequences(x)
         x_train, x_test, y_train, y_test = self._split_data(x, y)
-        model_checkpoint = ModelCheckpoint(weights_file,
-                                           monitor='acc',
+        model_checkpoint = ModelCheckpoint(self.weights_file,
+                                           monitor='accuracy',
                                            mode='max',
                                            save_best_only=True)
 
@@ -95,7 +126,8 @@ class LSTMClassifier(Classifier):
                         verbose=1)
         return self._get_statistics(x_test, y_test)
 
-    def _split_data(self, x, y, train_size=80):
+    @staticmethod
+    def _split_data(x, y, train_size=0.8):
         return train_test_split(x, y, train_size=train_size, random_state=7)
 
     def _get_statistics(self, x_test, y_test):
@@ -113,4 +145,4 @@ class LSTMClassifier(Classifier):
         # get the prediction
         prediction = self._model.predict(sequence)[0]
         # one-hot encoded vector, revert using np.argmax
-        return self.int2label[np.argmax(prediction)]
+        return int2label[np.argmax(prediction)]

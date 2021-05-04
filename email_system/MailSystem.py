@@ -17,7 +17,8 @@ class MailSystem(object):
         self._login(self.mail, self.login, self.password)
 
     def __del__(self):
-        self._delete()
+        pass
+        # self._delete()
 
     @abstractmethod
     def _delete(self):

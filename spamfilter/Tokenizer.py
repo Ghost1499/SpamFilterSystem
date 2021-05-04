@@ -1,4 +1,6 @@
-from collections import defaultdict
+from collections import defaultdict, Iterable
+from typing import Union
+
 import keras
 from keras.preprocessing.text import Tokenizer as Tknzer
 import keras.preprocessing.sequence
@@ -47,17 +49,28 @@ class Tokenizer(object):
         # return None
 
     def fit_tokenizer(self,data:Series):
+        data=data.apply(self.lemmatize)
         self._tokenizer.fit_on_texts(data)
 
     def get_embedding_matrix(self, dim=300):
         word_index=self._tokenizer.word_index
-        embedding_matrix=np.zeros(len(word_index)+1,dim)
-        for word,i in word_index:
+        embedding_matrix=np.zeros((len(word_index)+1,dim))
+        for word,index in word_index.items():
             if word in self.navec:
-                embedding_matrix[i]=self.navec[word]
+                embedding_matrix[index]=self.navec[word]
         return embedding_matrix
 
     def get_sequences(self,data):
+        """
+
+        :type data: Union[pd.Series,pd.DataFrame,Iterable]
+        """
+        if isinstance(data,(pd.Series,pd.DataFrame)):
+            data=data.apply(self.lemmatize)
+        elif isinstance(data,Iterable):
+            data=[self.lemmatize(elem) for elem in data]
+        else:
+            raise Exception("Неожиданный тип data")
         seq=self._tokenizer.texts_to_sequences(data)
         return keras.preprocessing.sequence.pad_sequences(seq)
 

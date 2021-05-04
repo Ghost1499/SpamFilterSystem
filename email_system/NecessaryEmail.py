@@ -10,31 +10,39 @@ import regex as re
 class NecessaryEmail(object):
 
     def __init__(self, email_message: EmailMessage, uid: str, text_maker: html2text.HTML2Text):
-        try:
-            self.email_message = email_message
-            self.uid = uid
-            self._text_maker = text_maker
-            self.subj_enc = email_message['subject']
-            self.subject = self._decode_subject(self.subj_enc)
-            self.raw_body =email_message.get_body(preferencelist=["plain", "html"])
-            if self.raw_body:
-                self.body=self.extract_body(self.raw_body)
-            self.is_spam=None
+        # try:
+        self.email_message = email_message
+        self.uid = uid
+        self._text_maker = text_maker
+        self.subj_enc = email_message['subject']
+        self.subject = self._decode_subject(self.subj_enc)
+        if self.subject:
+            self.prepared_subejct = self.get_prepared_subject()
+        else:
+            self.prepared_subejct = ""
+        self.body_enc = email_message.get_body(preferencelist=["plain", "html"])
+        if self.body_enc:
+            self.body = self.extract_body(self.body_enc)
+            self.prepared_body = self.get_prepared_body()
+        else:
+            self.body = ""
+            self.prepared_body = ""
+        self.is_spam = None
 
-            # text = self.extract_text(body)
-            # text = self.clean_up_text(text)
-            # if text:
-            #     self.text = text
-            # else:
-            #     self.text = None
+        # text = self.extract_text(body)
+        # text = self.clean_up_text(text)
+        # if text:
+        #     self.text = text
+        # else:
+        #     self.text = None
 
-        except Exception as ex:
-            self.subject = None
-            self.text = None
-            raise ex
-            # raise Exception("Subject or text of necessary email didnt parsed")
+        # except Exception as ex:
+        #     self.subject = None
+        #     self.text = None
+        #     raise ex
+        # raise Exception("Subject or text of necessary email didnt parsed")
 
-    def _decode_subject(self,subject):
+    def _decode_subject(self, subject):
         while subject.startswith("FWD:") or subject.startswith("Fwd:"):
             if subject.startswith("FWD:"):
                 subject = subject.lstrip("FWD:")
@@ -54,12 +62,22 @@ class NecessaryEmail(object):
             parts.append(decoded_part)
         return "".join(parts)
 
+    def get_prepared_subject(self):
+        return self._lstrip_subject(self.subject)
+
+    def get_prepared_body(self):
+        return self.clean_up_text(self.body)
+
     @staticmethod
     def _lstrip_subject(subject: str):
         if subject.startswith("FWD:"):
             subject = subject.lstrip("FWD:")
         if subject.startswith("Fwd:"):
             subject = subject.lstrip("Fwd:")
+        if subject.startswith("Re:"):
+            subject = subject.lstrip("Re:")
+        if subject.startswith("RE:"):
+            subject = subject.lstrip("RE:")
         return subject.lstrip()
 
     def get_text_from_html(self, html: str):
@@ -73,24 +91,27 @@ class NecessaryEmail(object):
             text = self.get_text_from_html(text)
         return text
 
-    def clean_up_text(self, text: str):
-        text=re.sub(r'[^\w\s'+string.punctuation+']', '',text)
-        text: str=re.sub(r'[\n‌‌]+','/n',text)
-        text: str=re.sub(r'[\s‌‌]+',' ',text)
+    @staticmethod
+    def clean_up_text(text: str) -> str:
+        text = re.sub(r'[^\w\s' + string.punctuation + ']', '', text)
+        text: str = re.sub(r'[\n‌‌]+', '/n', text)
+        text: str = re.sub(r'[\s‌‌]+', ' ', text)
         splited_lines = text.split("/n")
-        new_splited_lines=[]
+        new_splited_lines = []
         for line in splited_lines:
-            if line==" ":
-                line=""
-            if line!="":
+            if line == "-------- Исходное сообщение --------":
+                break
+            if line == " ":
+                line = ""
+            if line != "":
                 new_splited_lines.append(line)
 
         if "Пересылаемое сообщение" in new_splited_lines[0]:
-            for i,line in enumerate(reversed(new_splited_lines)):
+            for i, line in enumerate(reversed(new_splited_lines)):
                 if "Конец пересылаемого сообщения" in line:
-                    text = " ".join(new_splited_lines[2:-(i+1)])
+                    text = " ".join(new_splited_lines[2:-(i + 1)])
                     break
-                if i>10:
+                if i > 10:
                     text = " ".join(new_splited_lines[2:])
                     break
         else:

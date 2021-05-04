@@ -6,8 +6,9 @@ import pandas as pd
 
 from email_system.NecessaryEmail import NecessaryEmail
 from email_system.MailReceiver import MailReceiver
-from spamfilter.classifiers.Classifier import int2label
+from spamfilter.classifiers.utils import int2label
 from email_system.errors import *
+
 
 class Extractor(object):
     recieve_mail_system: MailReceiver
@@ -15,21 +16,13 @@ class Extractor(object):
     spam: List[NecessaryEmail]
 
     def __init__(self, recieve_mail_system: MailReceiver):
-        self.spam_filename = "spam_uids"
-        self.ham_filename = "ham_uids"
+        self.spam_filename = "spam_uids.txt"
+        self.ham_filename = "ham_uids.txt"
         self.recieve_mail_system = recieve_mail_system
         self.spam = []
         self.ham = []
         self.spam_uids = self._read_uids(self.spam_filename)
         self.ham_uids = self._read_uids(self.ham_filename)
-
-    def _read_uids(self, filename):
-        if os.path.exists(filename):
-            with open(filename, "r") as file:
-                text = file.read()
-            return [uid for uid in text.split()]
-        return []
-
 
     def _extract_from(self, folder, uids):
         try:
@@ -37,15 +30,15 @@ class Extractor(object):
             existed_uids = uids
             new_uids = set(self.recieve_mail_system.get_uids())
             new_uids.difference_update(existed_uids)
-            return self.recieve_mail_system.by_uid(list(new_uids))
+            return self.recieve_mail_system.by_uid(list(new_uids)), new_uids
         except SelectFolderError:
-            return []
+            return [], []
 
     def extract(self, spam_folder, ham_folder):
-        self.spam = self._extract_from(spam_folder, self.spam_uids)
+        self.spam, self.spam_uids = self._extract_from(spam_folder, self.spam_uids)
         for mail in self.spam:
             mail.is_spam = True
-        self.ham = self._extract_from(ham_folder, self.ham_uids)
+        self.ham, self.ham_uids = self._extract_from(ham_folder, self.ham_uids)
         for mail in self.ham:
             mail.is_spam = False
 
@@ -65,33 +58,43 @@ class Extractor(object):
         uids = []
 
         for mail in mails:
-            subjects.append(mail.subject)
-            texts.append(mail.body)
+            subjects.append(mail.prepared_subejct)
+            texts.append(mail.prepared_body)
             labels.append(int2label[int(mail.is_spam)])
             uids.append(mail.uid)
-
-        df = pd.DataFrame(data=[uids, labels, subjects, texts], columns=['uid', 'label', 'subject', 'text'])
+        data = {'uid': uids, 'label': labels, 'subject': subjects, 'text': texts}
+        df = pd.DataFrame(data=data)
         return df
 
     def save_to_csv(self, filename: str):
         self._write_uids(self.spam_filename, self.spam_uids)
         self._write_uids(self.ham_filename, self.ham_uids)
+        ind=os.path.exists(filename)
         with open(filename, 'a', newline="", encoding='utf-8') as file:
             writer = csv.writer(file)
-            writer.writerow(["uid", "label", "subject", "text"])
-            for mail in self.spam:
-                writer.writerow([mail.uid, "spam", mail.subject, mail.text])
-            for mail in self.ham:
-                writer.writerow([mail.uid, "ham", mail.subject, mail.text])
+            if not ind:
+                writer.writerow(["uid", "label", "subject", "text"])
+            mails=self.spam+self.ham
+            for mail in mails:
+                writer.writerow([mail.uid, int2label(int(mail.is_spam)), mail.prepared_subejct, mail.prepared_body])
 
-    def _write_uids(self, filename, uids):
+    @staticmethod
+    def _write_uids(filename, uids):
         """
 
         :type filename: str название файла для записи uids
         :type uids: List[int] список uids
         """
         with open(filename, 'a') as file:
-            file.write(" ".join(uids))
+            file.write(" ".join(uids)+" ")
+
+    @staticmethod
+    def _read_uids(filename):
+        if os.path.exists(filename):
+            with open(filename, "r") as file:
+                text = file.read()
+            return [uid for uid in text.split()]
+        return []
 
 # def main():
 #     mail_system = RecieveMailSystem(config.server_imap, config.port, config.login, config.password)
