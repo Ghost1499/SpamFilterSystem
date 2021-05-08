@@ -13,6 +13,17 @@ from email_system.MailSystem import MailSystem
 from email_system.utils.imap_encoding import imaputf7decode
 from email_system.errors import *
 
+def get_text_maker():
+    text_maker = html2text.HTML2Text()
+    text_maker.ignore_links = True
+    text_maker.bypass_tables = False
+    text_maker.skip_internal_links = True
+    text_maker.ignore_images = True
+    text_maker.ignore_tables = True
+    text_maker.ignore_emphasis = True
+    return text_maker
+
+
 class MailReceiver(MailSystem):
     """description of class"""
     mail: imaplib.IMAP4_SSL
@@ -24,13 +35,7 @@ class MailReceiver(MailSystem):
 
     def __init__(self, server, port, login, password):
         MailSystem.__init__(self, server, port, login, password)
-        self._text_maker = html2text.HTML2Text()
-        self._text_maker.ignore_links = True
-        self._text_maker.bypass_tables = False
-        self._text_maker.skip_internal_links = True
-        self._text_maker.ignore_images = True
-        self._text_maker.ignore_tables = True
-        self._text_maker.ignore_emphasis = True
+        self.text_maker = get_text_maker()
 
         self._folder=None
         self._parser = email.parser.BytesParser(EmailMessage)
@@ -71,7 +76,7 @@ class MailReceiver(MailSystem):
         mails=self._raw_by_uids(uids)
         for i,uid in enumerate(uids):
             email_message=next(mails)
-            necessary_email = NecessaryEmail(email_message, uid, self._text_maker)
+            necessary_email = NecessaryEmail(email_message, uid, self.text_maker)
             yield necessary_email
             # emails.append(necessary_email)
 

@@ -23,10 +23,10 @@ class LSTMClassifier(object):
     tensorboard: TensorBoard
     _model = Sequential
 
-    def __init__(self, navec_path, batch_size=64, embedding_size=300,sequence_length=100, train_size=0.8, epochs=20,model_file = "model.json",weights_file = "checkpoint.h5"):
+    def __init__(self, batch_size=64, embedding_size=300,sequence_length=100, train_size=0.8, epochs=20,model_file = "model.json",weights_file = "checkpoint.h5"):
         self.model_file = model_file
         self.weights_file = weights_file
-        self.navec_path = navec_path
+        # self.navec_path = navec_path
         self.model_file = "model.json"
         self.weights_file = "checkpoint.h5"
         self.embedding_size = embedding_size
@@ -35,23 +35,7 @@ class LSTMClassifier(object):
         self.train_size = train_size
         self.epochs = epochs
 
-        self._tokenizer=MyTokenizer(self.navec_path,embedding_size,sequence_length)
-
-    # def set_up(self,**kwargs):
-    #     if os.path.exists(self.model_file) and os.path.exists(self.weights_file):
-    #         self.load_model()
-    #     else:
-    #         self._model=self.build_model(kwargs["embedding_data"])
-    #         return self.train(kwargs['x'], kwargs['y'], self.weights_file)
-    def fit_tokenizer(self,data):
-        """
-        Необходимо выполнить перед build_model
-
-        :param data:
-        """
-        self._tokenizer.fit_tokenizer(data)
-
-    def build_model(self, embedding_data, lstm_units=128):
+    def build_model(self, embedding_matrix, lstm_units=128,save_model=True):
         """
         Constructs the model,
         Embedding vectors => LSTM => 2 output Fully-Connected neurons with softmax activation
@@ -60,9 +44,8 @@ class LSTMClassifier(object):
         :type embedding_data: pd.Series Данные для Embedding слоя
         """
 
-        embedding_matrix = self._tokenizer.get_embedding_matrix()
         model: Sequential = Sequential()
-        model.add(Embedding(len(self._tokenizer.word_index) + 1,
+        model.add(Embedding(len(embedding_matrix),
                             self.embedding_size,
                             weights=[embedding_matrix],
                             trainable=False,
@@ -76,10 +59,27 @@ class LSTMClassifier(object):
 
         # model.summary()
         self._model=model
+        self._compile_model()
+        if save_model:
+            self.save_model()
 
-    def compile_model(self):
+    def _compile_model(self):
         self._model.compile(optimizer="rmsprop", loss="categorical_crossentropy",
                       metrics=["accuracy", keras_metrics.precision(), keras_metrics.recall()])
+
+    def load_model(self):
+        filename=self.model_file
+        if not os.path.exists(filename):
+            raise Exception("Указанный файл не существует")
+        with open(filename, 'r') as f:
+            self._model = model_from_json(f.read())
+        self._compile_model()
+
+    def load_weights(self):
+        filename = self.weights_file
+        if not os.path.exists(filename):
+            raise Exception("Указанный файл не существует")
+        self._model.load_weights(filename)
 
     def save_model(self,filename:str=None):
         if filename:
@@ -91,22 +91,9 @@ class LSTMClassifier(object):
         with open(model_file, 'w') as f:
             f.write(model_json)
 
-    def load_model(self):
-        filename=self.model_file
-        if not os.path.exists(filename):
-            raise Exception("Указанный файл не существует")
-        with open(filename, 'r') as f:
-            self._model = model_from_json(f.read())
-
-    def load_weights(self):
-        filename = self.weights_file
-        if not os.path.exists(filename):
-            raise Exception("Указанный файл не существует")
-        self._model.load_weights(filename)
-
     def train(self, x: pd.Series, y: pd.Series):
         """
-        
+
         
         :rtype:
         :param x: Обучающие данные
@@ -115,9 +102,7 @@ class LSTMClassifier(object):
         """
         self.tensorboard = TensorBoard(f"logs/spam_classifier_{time.time()}", histogram_freq=0,
                                        write_graph=True, write_images=False)
-        y=[label2int[i] for i in y]
         y = to_categorical(y)
-        x=self._tokenizer.get_sequences(x)
         x_train, x_test, y_train, y_test = self._split_data(x, y)
         model_checkpoint = ModelCheckpoint(self.weights_file,
                                            monitor='accuracy',
@@ -146,8 +131,7 @@ class LSTMClassifier(object):
 
         return loss, accuracy, precision, recall
 
-    def get_predictions(self, text):
-        sequence = self._tokenizer.get_sequences([text])
+    def get_predictions(self, sequence):
         # get the prediction
         prediction = self._model.predict(sequence)[0]
         # one-hot encoded vector, revert using np.argmax

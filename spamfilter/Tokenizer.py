@@ -16,20 +16,22 @@ from pandas import Series
 from pymorphy2 import MorphAnalyzer
 from nltk.corpus import stopwords
 
+
 # patterns = "[A-Za-z0-9!#$%&'()*+,./:;<=>?@[\]^_`{|}~—\"\-]+"
-morph = MorphAnalyzer()
 
 
 class Tokenizer(object):
 
     def __init__(self,
                  navec_path: str,  # ='../../../../ExtractSpamMails/navec_hudlit_v1_12B_500K_300d_100q.tar',
-                 dimensions: int,sequence_length:int):
+                 dimensions: int, sequence_length: int):
         self.sequence_length = sequence_length
         self.dimensions = dimensions
         self.navec = Navec.load(navec_path)
         self.pattern = r"[^А-я-]+"
         self.stopwords = stopwords.words('russian')
+        self.morph = MorphAnalyzer()
+
         self._tokenizer: Tknzer = Tknzer()
 
     @property
@@ -37,12 +39,12 @@ class Tokenizer(object):
         return self._tokenizer.word_index
 
     def lemmatize(self, doc):
-        doc = re.sub(self.pattern, " ", doc)
+        doc = re.sub(self.pattern, " ", str(doc))
         tokens = []
         for token in doc.split():
             if token and token not in self.stopwords:
                 token = token.strip()
-                token = morph.normal_forms(token)[0]
+                token = self.morph.normal_forms(token)[0]
                 if token not in self.stopwords:
                     tokens.append(token)
         # if len(tokens) >= 1:
@@ -50,7 +52,6 @@ class Tokenizer(object):
         # return None
 
     def fit_tokenizer(self, data: Union[Series, List[str]]):
-        data=self._lemmatize_texts(data)
         self._tokenizer.fit_on_texts(data)
 
     def get_embedding_matrix(self, dim=300):
@@ -61,8 +62,10 @@ class Tokenizer(object):
                 embedding_matrix[index] = self.navec[word]
         return embedding_matrix
 
-    def _lemmatize_texts(self, data):
-        if isinstance(data, (pd.Series, pd.DataFrame)):
+    def lemmatize_texts(self, data):
+        if isinstance(data, pd.DataFrame):
+            data = data.applymap(self.lemmatize)
+        elif isinstance(data, pd.Series):
             data = data.apply(self.lemmatize)
         elif isinstance(data, Iterable):
             data = [self.lemmatize(elem) for elem in data]
@@ -70,14 +73,13 @@ class Tokenizer(object):
             raise Exception("Неожиданный тип data")
         return data
 
-    def get_sequences(self, data):
+    def text_to_sequences(self, data):
         """
 
         :type data: Union[pd.Series,pd.DataFrame,Iterable]
         """
-        data = self._lemmatize_texts(data)
         seq = self._tokenizer.texts_to_sequences(data)
-        return keras.preprocessing.sequence.pad_sequences(seq,maxlen=self.sequence_length)
+        return keras.preprocessing.sequence.pad_sequences(seq, maxlen=self.sequence_length)
 
     # def main():
     #     df = pd.read_csv("../../../../ExtractSpamMails/myspam.csv")

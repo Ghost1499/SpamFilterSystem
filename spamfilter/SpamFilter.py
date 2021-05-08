@@ -10,9 +10,11 @@ class SpamFilter(object):
         self.is_load=is_load
         self._navec_path="spamfilter/navec_hudlit_v1_12B_500K_300d_100q.tar"
         self.extractor=Extractor(recieve_mail_system)
-        self.extractor.extract(spam_folder, ham_folder)
-        self.extractor.save_to_csv("spam.csv")
-        self.df=self.extractor.get_dataframe()
+        spam,spam_uids=self.extractor.from_email_folder(spam_folder,self.extractor.spam_uids)
+        ham,ham_uids=self.extractor.from_email_folder(ham_folder,self.extractor.ham_uids)
+        # self.extractor.extract(spam_folder, ham_folder)
+        self.extractor.save_to_csv(spam,ham,"spam.csv")
+        self.df=self.extractor.get_dataframe(spam,ham)
         if  self.df is not None :
             self.df=self.df.sample(frac=1)
             # self._dataset_path="myspam.csv"
@@ -25,7 +27,7 @@ class SpamFilter(object):
                 self.subject_classifier.build_model(self.df['subject'])
                 self.subject_classifier.save_model()
 
-            self.subject_classifier.compile_model()
+            self.subject_classifier._compile_model()
             if os.path.exists(self.subject_classifier.weights_file) and self.is_load:
                 self.subject_classifier.load_weights()
             loss,accuracy,precision,recall= self.subject_classifier.train(x=self.df['subject'],y=self.df["label"])

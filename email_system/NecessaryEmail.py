@@ -8,54 +8,45 @@ import regex as re
 
 
 class NecessaryEmail(object):
+    subject_enc = ""
+    subject = ""
+    prepared_subejct = ""
+    body_enc = ""
+    body = ""
+    prepared_body = ""
+    is_spam = None
+    def __init__(self, email_message: EmailMessage, uid: str, text_maker: html2text.HTML2Text,is_spam=None):
+        self.is_spam = is_spam
+        self.email_message = email_message
+        self.uid = uid
+        self._text_maker = text_maker
 
-    def __init__(self, email_message: EmailMessage, uid: str, text_maker: html2text.HTML2Text):
+
         try:
-            self.email_message = email_message
-            self.uid = uid
-            self._text_maker = text_maker
             self.subj_enc = email_message['subject']
             self.subject = self._decode_subject(self.subj_enc)
             if self.subject:
                 self.prepared_subejct = self.get_prepared_subject()
-            else:
-                self.prepared_subejct = ""
         except Exception:
-            self.subject=""
-            self.prepared_subejct=""
+            pass
+            # raise Exception("Ошибка извлечения темы письма")
         try:
             self.body_enc = email_message.get_body(preferencelist=["plain", "html"])
             if self.body_enc:
                 self.body = self.extract_body(self.body_enc)
                 self.prepared_body = self.get_prepared_body()
-            else:
-                self.body = ""
-                self.prepared_body = ""
         except Exception:
-            self.body=""
-            self.prepared_body=""
-        self.is_spam = None
+            pass
+            # raise Exception("Ошибка извлечения тела письма")
 
-        # text = self.extract_text(body)
-        # text = self.clean_up_text(text)
-        # if text:
-        #     self.text = text
-        # else:
-        #     self.text = None
-
-        # except Exception as ex:
-        #     self.subject = None
-        #     self.text = None
-        #     raise ex
-        # raise Exception("Subject or text of necessary email didnt parsed")
-
-    def _decode_subject(self, subject):
+    @staticmethod
+    def _decode_subject(subject):
         while subject.startswith("FWD:") or subject.startswith("Fwd:"):
             if subject.startswith("FWD:"):
                 subject = subject.lstrip("FWD:")
             if subject.startswith("Fwd:"):
                 subject = subject.lstrip("Fwd:")
-        return self.decode_header(subject)
+        return NecessaryEmail.decode_header(subject)
 
     @staticmethod
     def decode_header(header: str):
@@ -70,13 +61,13 @@ class NecessaryEmail(object):
         return "".join(parts)
 
     def get_prepared_subject(self):
-        return self._lstrip_subject(self.subject)
+        return NecessaryEmail.lstrip_subject(self.subject)
 
     def get_prepared_body(self):
         return self.clean_up_text(self.body)
 
     @staticmethod
-    def _lstrip_subject(subject: str):
+    def lstrip_subject(subject: str):
         if subject.startswith("FWD:"):
             subject = subject.lstrip("FWD:")
         if subject.startswith("Fwd:"):
