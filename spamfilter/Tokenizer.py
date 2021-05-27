@@ -54,7 +54,9 @@ class Tokenizer(object):
     def fit_tokenizer(self, data: Union[Series, List[str]]):
         self._tokenizer.fit_on_texts(data)
 
-    def get_embedding_matrix(self, dim=300):
+    def get_embedding_matrix(self, dim=None):
+        if dim is None:
+            dim=self.dimensions
         word_index = self._tokenizer.word_index
         embedding_matrix = np.zeros((len(word_index) + 1, dim))
         for word, index in word_index.items():
@@ -73,13 +75,16 @@ class Tokenizer(object):
             raise Exception("Неожиданный тип data")
         return data
 
-    def text_to_sequences(self, data):
+    def text_to_sequences(self, data,pad_length=None):
         """
 
         :type data: Union[pd.Series,pd.DataFrame,Iterable]
         """
+
+        if pad_length is None:
+            pad_length=self.sequence_length
         seq = self._tokenizer.texts_to_sequences(data)
-        return keras.preprocessing.sequence.pad_sequences(seq, maxlen=self.sequence_length)
+        return keras.preprocessing.sequence.pad_sequences(seq, maxlen=pad_length)
 
     # def main():
     #     df = pd.read_csv("../../../../ExtractSpamMails/myspam.csv")

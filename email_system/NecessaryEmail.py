@@ -35,8 +35,8 @@ class NecessaryEmail(object):
             if self.body_enc:
                 self.body = self.extract_body(self.body_enc)
                 self.prepared_body = self.get_prepared_body()
-        except Exception:
-            pass
+        except Exception as ex:
+            print(ex)
             # raise Exception("Ошибка извлечения тела письма")
 
     @staticmethod

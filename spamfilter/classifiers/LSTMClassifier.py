@@ -1,5 +1,6 @@
 import os
 
+import keras
 import numpy as np
 import keras_metrics  # for recall and precision metrics
 from keras.preprocessing.sequence import pad_sequences
@@ -24,6 +25,7 @@ class LSTMClassifier(object):
     _model = Sequential
 
     def __init__(self, batch_size=64, embedding_size=300,sequence_length=100, train_size=0.8, epochs=20,model_file = "model.json",weights_file = "checkpoint.h5"):
+        self.model_img_file = "model.png"
         self.model_file = model_file
         self.weights_file = weights_file
         # self.navec_path = navec_path
@@ -91,6 +93,14 @@ class LSTMClassifier(object):
         with open(model_file, 'w') as f:
             f.write(model_json)
 
+    def plot_model(self, filename:str=None):
+        if filename:
+            model_img_file=filename
+        else:
+            model_img_file = self.model_img_file
+
+        keras.utils.plot_model(self._model,to_file=model_img_file,show_shapes=True)
+
     def train(self, x: pd.Series, y: pd.Series):
         """
 
@@ -133,6 +143,6 @@ class LSTMClassifier(object):
 
     def get_predictions(self, sequence):
         # get the prediction
-        prediction = self._model.predict(sequence)[0]
+        prediction = self._model.predict(sequence)
         # one-hot encoded vector, revert using np.argmax
-        return int2label[np.argmax(prediction)]
+        return np.argmax(prediction[0])

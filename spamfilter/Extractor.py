@@ -1,3 +1,5 @@
+import email
+import email.policy as epolicy
 import mailbox
 import os
 from typing import List
@@ -27,7 +29,7 @@ class Extractor(object):
         self.ham_uids = self._read_uids(self.ham_filename)
 
     def from_mbox(self, filename, is_spam=None):
-        mbox = mailbox.mbox(filename)
+        mbox = mailbox.mbox(filename,factory=lambda f: email.message_from_binary_file(f, policy=epolicy.default))
         for message in mbox:
             yield NecessaryEmail(message, None, self.text_maker, is_spam)
 
