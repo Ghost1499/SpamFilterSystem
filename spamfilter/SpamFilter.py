@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import sklearn
 from matplotlib import pyplot
-from sklearn.metrics import accuracy_score, precision_score,recall_score
+from sklearn.metrics import accuracy_score, precision_score,recall_score,classification_report
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -45,7 +45,7 @@ class SpamFilter(object):
         self._neighbors=KNeighborsClassifier()
         self._svm=SVC()
         self._tree=DecisionTreeClassifier()
-
+        self._train_methods=[self._train_naive_bayes,self._train_lstm]
         self._fit(x_train, y_train)
         self._test(x_test,y_test)
         # spam,spam_uids=self.extractor.from_email_folder(spam_folder,self.extractor.spam_uids)
@@ -79,6 +79,8 @@ class SpamFilter(object):
         pyplot.show()
 
     def _fit(self, x, y):
+        # for method in self._train_methods:
+        #     method(x,y)
         self._train_naive_bayes(x, y)
         self._train_lstm(x, y)
         # self._train_neigbors(x,y)
@@ -153,24 +155,27 @@ class SpamFilter(object):
         # y = y.reshape(-1, 1)
         self._neighbors.fit(x,y)
 
+    def _print_statistics(self, predictions, y_test):
+        print(f"accuracy score - {accuracy_score(predictions, y_test)} precision score {precision_score(predictions,y_test)} recall score - {recall_score(predictions,y_test)}")
+        report=classification_report(y_test,predictions,target_names=["Not Spam","Spam"])
+        print(report)
+
     def _test_naive_bayes(self, x_test, y_test):
         # print("Naive Bayes")
-        naive_bayes_predictions = list(tqdm((self._naive_bayes_classifier.predict(x) for x in x_test),"Naive Bayes"))
-        print(f"accuracy score - {accuracy_score(naive_bayes_predictions, y_test)} recall score - {recall_score(naive_bayes_predictions,y_test)}")
+        predictions = list(tqdm((self._naive_bayes_classifier.predict(x) for x in x_test),"Naive Bayes"))
+        self._print_statistics(y_test,predictions)
 
     def _test_lstm(self, x_test, y_test):
         # print("Lstm")
-        lstm_predictions =[]
+        predictions =[]
         for x in tqdm(x_test,"Lstm"):
             x=np.reshape(x,(1,x.shape[0]))
-            lstm_predictions.append(self._lstm_classifier.get_predictions(x))
-        print(f"accuracy score - {accuracy_score(lstm_predictions, y_test)} recall score - {recall_score(lstm_predictions,y_test)}")
+            predictions.append(self._lstm_classifier.get_predictions(x))
+        self._print_statistics(y_test,predictions)
 
     def _test_neigbors(self, x_test, y_test):
         predictions = list(tqdm((self._neighbors.predict(x) for x in x_test), "Neighbors"))
-        print(
-            f"accuracy score - {accuracy_score(predictions, y_test)} recall score - {recall_score(predictions, y_test)}")
-
+        self._print_statistics(y_test,predictions)
 
     def classify(self, emails: List[NecessaryEmail]):
         classified = []
@@ -181,17 +186,5 @@ class SpamFilter(object):
         return classified
 
 
-# def main():
-#     #mail_sender=SendMailSystem()
-#     subject="Letter to send"
-#     body="This is letter to send"
-#     reciever_address=config.reciever_login
-#     #mail_sender.send_mail(subject,body,reciever_address,None)
-#     #mail_reciever=RecieveMailSystem()
-#     #mail_reciever.recieve_mail()
-#     system_controller= SystemController()
-#     csv_filename= "../spam_ham_dataset.csv"
-#     system_controller.train_from_file(csv_filename)
-#
 if __name__ == "__main__":
-    spam_filter = SpamFilter(None,is_load_model=True,is_load_weigth=True,sequence_length=20)
+    spam_filter = SpamFilter(None,is_load_model=False,is_load_weigth=False,sequence_length=20)

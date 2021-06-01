@@ -107,7 +107,7 @@ class Extractor(object):
             writer = csv.writer(file)
             if not ind:
                 writer.writerow(["uid", "label", "subject", "text"])
-            mails = self.spam + self.ham
+            mails = spam + ham
             for mail in mails:
                 writer.writerow([mail.uid, int2label[int(mail.is_spam)], mail.prepared_subejct, mail.prepared_body])
 

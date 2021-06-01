@@ -24,7 +24,7 @@ class LSTMClassifier(object):
     tensorboard: TensorBoard
     _model = Sequential
 
-    def __init__(self, batch_size=64, embedding_size=300,sequence_length=100, train_size=0.8, epochs=20,model_file = "model.json",weights_file = "checkpoint.h5"):
+    def __init__(self, batch_size=64, embedding_size=300,sequence_length=100, train_size=0.8, epochs=40,model_file = "model.json",weights_file = "checkpoint.h5"):
         self.model_img_file = "model.png"
         self.model_file = model_file
         self.weights_file = weights_file
@@ -67,7 +67,7 @@ class LSTMClassifier(object):
 
     def _compile_model(self):
         self._model.compile(optimizer="rmsprop", loss="categorical_crossentropy",
-                      metrics=["accuracy", keras_metrics.precision(), keras_metrics.recall()])
+                      metrics=["accuracy", keras_metrics.precision(), keras_metrics.recall(),keras_metrics.categorical_f1_score()])
 
     def load_model(self):
         filename=self.model_file
@@ -115,7 +115,7 @@ class LSTMClassifier(object):
         y = to_categorical(y)
         x_train, x_test, y_train, y_test = self._split_data(x, y)
         model_checkpoint = ModelCheckpoint(self.weights_file,
-                                           monitor='accuracy',
+                                           monitor='precision',
                                            mode='max',
                                            save_best_only=True)
 
