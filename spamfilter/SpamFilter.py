@@ -1,11 +1,14 @@
+import json
 import os
+import time
+from collections import Iterable
 from typing import List
 
 import pandas as pd
 import numpy as np
 import sklearn
 from matplotlib import pyplot
-from sklearn.metrics import accuracy_score, precision_score,recall_score,classification_report
+from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -14,7 +17,11 @@ from spamfilter.classifiers.LSTMClassifier import LSTMClassifier
 from spamfilter.classifiers.NaiveBayesClassifier import NaiveBayesClassifier
 from spamfilter.classifiers.utils import label2int, int2label
 from spamfilter.Extractor import Extractor
+from spamfilter.DataPrepareEngine import DataPrepareEngine
+from spamfilter.TrainEngine import *
+from spamfilter.TestEngine import *
 from email_system.NecessaryEmail import NecessaryEmail
+from spamfilter.utils.utils import *
 
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
@@ -25,166 +32,130 @@ from sklearn.svm import SVC
 
 class SpamFilter(object):
 
-    def __init__(self, recieve_mail_system, spam_folder="emails/spam/", ham_folder="emails/ham/",
-                 navec_path="navec_hudlit_v1_12B_500K_300d_100q.tar", is_load_model=True, is_load_weigth=True, dimensions=300,
-                 sequence_length=100, lemmatized_path="lemmatized.csv", test_size=0.2):
-        # self.root= "spamfilter/"
-        self.is_load_model = is_load_model
-        self.is_load_weigth = is_load_weigth
-        self.spam_folder = spam_folder
-        self.ham_folder = ham_folder
-        self.lemmatized_path = lemmatized_path
-        self.test_size = test_size
-        self._extractor = Extractor(recieve_mail_system)
-        self._tokenizer = Tokenizer(navec_path, dimensions=dimensions, sequence_length=sequence_length)
+    def __init__(self, recieve_mail_system):
+        self.recieve_mail_system = recieve_mail_system
+        self._subject_seq_length = 20
+        self._text_seq_length = 100
+        self.data_path = "data"
+        self._data_prepare = DataPrepareEngine(None, data_path=self.data_path)
 
-        x_train, x_test, y_train, y_test = self._prepare_data()
+        data_prepare = self._data_prepare
+        lemmatized = data_prepare.lemmatize(True)
+        subject, text = data_prepare.prepare_data(lemmatized)
+        emb_matrix = data_prepare.fit_tokenizer(subject, text)
 
-        self._naive_bayes_classifier = NaiveBayesClassifier()
-        self._lstm_classifier = LSTMClassifier(embedding_size=dimensions, sequence_length=sequence_length)
-        self._neighbors=KNeighborsClassifier()
-        self._svm=SVC()
-        self._tree=DecisionTreeClassifier()
-        self._train_methods=[self._train_naive_bayes,self._train_lstm]
-        self._fit(x_train, y_train)
-        self._test(x_test,y_test)
-        # spam,spam_uids=self.extractor.from_email_folder(spam_folder,self.extractor.spam_uids)
-        # ham,ham_uids=self.extractor.from_email_folder(ham_folder,self.extractor.ham_uids)
-        # # self.extractor.extract(spam_folder, ham_folder)
-        # self.extractor.save_to_csv(spam,ham,"spam.csv")
-        # self.df=self.extractor.get_dataframe(spam,ham)
-        # if  self.df is not None :
-        #     self.df=self.df.sample(frac=1)
+        subject=self._equalize_classes(subject)
+        text=self._equalize_classes(text)
 
-    def _prepare_data(self):
-        if os.path.exists(self.lemmatized_path):
-            lemmatized = pd.read_csv(self.lemmatized_path)
-        else:
-            df = self._extract()
-            df.to_csv("dataset.csv")
-            lemmatized = self._lemmatize(df)
-            lemmatized.to_csv(self.lemmatized_path)
-        self.dataframe_statistics(lemmatized)
-        x, y = self._tokenize(lemmatized)
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=self.test_size, random_state=42)
-        return x_train, x_test, y_train, y_test
+        data_prepare.dataframe_statistics(subject, 'subject')
+        data_prepare.dataframe_statistics(text, 'text')
 
-    def dataframe_statistics(self, df):
-        print(df.shape)
-        df.info()
-        print(df.describe())
-        print(df.nunique())
-        new_subj=df['subject'].str.count(" ")+1
-        pyplot.hist(new_subj)
-        pyplot.show()
+        x_subject, y_subject = data_prepare.texts_to_sequences(self._subject_seq_length, subject, 'subject')
+        x_text, y_text = data_prepare.texts_to_sequences(self._text_seq_length, text, 'text')
 
-    def _fit(self, x, y):
-        # for method in self._train_methods:
-        #     method(x,y)
-        self._train_naive_bayes(x, y)
-        self._train_lstm(x, y)
-        # self._train_neigbors(x,y)
-        self._lstm_classifier.plot_model()
+        x_subject_train, x_subject_test, y_subject_train, y_subject_test = train_test_split(x_subject, y_subject,
+                                                                                            test_size=0.1)
+        x_text_train, x_text_test, y_text_train, y_text_test = train_test_split(x_text, y_text, test_size=0.1)
 
-    def _test(self,x_test,y_test):
-        self._test_naive_bayes(x_test,y_test)
-        self._test_lstm(x_test,y_test)
-        # self._test_neigbors(x_test,y_test)
+        self._subject_LSTM = LSTMClassifier(sequence_length=self._subject_seq_length, model_name='Subject LSTM')
+        self._body_LSTM = LSTMClassifier(sequence_length=self._text_seq_length, model_name='Body LSTM')
 
-    # def _relative_path(self,path:str):
-    #     return self.root+path
+        self._subject_classifiers = [(NaiveBayesClassifier(), 'Subject Naive Bayes'),
+                                     (SVC(), 'Subject SVC'),
+                                     (KNeighborsClassifier(n_neighbors=18), 'Subject KNN'),
+                                     (DecisionTreeClassifier(), "Subject DecTree")]
+        self._body_classifiers = [(NaiveBayesClassifier(), 'Body Naive Bayes'),
+                                  (SVC(), 'Body SVC'),
+                                  (KNeighborsClassifier(n_neighbors=18), 'Body KNN'),
+                                  (DecisionTreeClassifier(), 'Body DecTree')]
 
-    def _extract(self):
-        my_spam = list(self._extractor.from_mbox(self.spam_folder + "Myspam.mbox", True))
-        my_spam_df = self._extractor.get_dataframe(my_spam)
+        self._fit_clsfr(self._subject_classifiers, x_subject_train, y_subject_train)
+        print(f'Training {self._subject_LSTM.model_name}')
+        train_lstm(self._subject_LSTM, x_subject_train, y_subject_train, emb_matrix, validation_size=0.1,
+                   is_load_model=False,
+                   is_load_weights=False)
+        self._fit_clsfr(self._body_classifiers, x_text_train, y_text_train)
+        print(f'Training {self._body_LSTM.model_name}')
+        train_lstm(self._body_LSTM, x_text_train, y_text_train, emb_matrix, validation_size=0.1,
+                   is_load_model=False,
+                   is_load_weights=False)
 
-        spam_df = pd.read_excel(self.spam_folder + "Pisma_spam.xlsx", index_col=None)
-        spam_df['label'] = 'spam'
+        self._test(x_subject_test, y_subject_test,x_text_test, y_text_test)
 
-        ham_df = pd.read_csv(self.ham_folder + "ham.CSV")
-        ham_df['label'] = "ham"
-
-        df = pd.concat([my_spam_df, spam_df, ham_df], join="inner", ignore_index=True)
-        df=df.sample(frac=1)
+    @staticmethod
+    def _equalize_classes(df:pd.DataFrame):
+        spam = df[df['label'] == 'spam']
+        spam_count = spam.shape[0]
+        ham = df[df['label'] == 'ham'].sample(n=spam_count)
+        df = pd.concat([spam, ham], ignore_index=True).sample(frac=1)
         return df
 
-    def _lemmatize(self, df):
-        df['subject'] = self._tokenizer.lemmatize_texts(df['subject'])
-        df['text'] = self._tokenizer.lemmatize_texts(df['text'])
-        # сохранить лемматизированный датасет
-        return df
+    def _test(self, x_subject_test, y_subject_test, x_text_test, y_text_test):
+        if not os.path.isdir(self.data_path):
+            os.mkdir(self.data_path)
+        os.chdir(self.data_path)
+        self.statistics_path = f'statistics_{time.ctime(time.time())}'.replace(' ', '_').replace(':', '-')
+        os.mkdir(self.statistics_path)
+        os.chdir('..')
+        self._test_clsfr(self._subject_classifiers, x_subject_test, y_subject_test)
+        self._test_clsfr([(self._subject_LSTM, self._subject_LSTM.model_name)], x_subject_test, y_subject_test,
+                         method=test_lstm)
+        self._test_clsfr(self._body_classifiers, x_text_test, y_text_test)
+        self._test_clsfr([(self._body_LSTM, self._body_LSTM.model_name)], x_text_test, y_text_test, method=test_lstm)
 
-    def drop_empty(self,df):
-        """
+    def _fit_clsfr(self, classifiers: Iterable, x, y):
+        for classifier, name in classifiers:
+            print(f'Fitting {name}')
+            fit_classifier(classifier, x, y)
 
-        @rtype: pd.Dataframe
-        """
-        df = df.replace("", np.nan)
-        subject = df[['subject','label']].dropna()
-        text = df[['text','label']].dropna()
-        return subject,text
+    def _test_clsfr(self, classifiers: Iterable, x, y, method=None):
+        if method is None:
+            method = test_classifier
+        for classifier, name in classifiers:
+            result = method(classifier, x, y, name)
+            print(result)
+            with open(make_path([self.data_path, self.statistics_path], name + '.txt'), 'a') as file:
+                file.write(result)
 
-    def _tokenize(self, df:pd.DataFrame):
-        subject,text=self.drop_empty(df)
-        subject:pd.DataFrame
-        text:pd.DataFrame
-        subject=subject.drop_duplicates()
-        text=text.drop_duplicates()
-        self._tokenizer.fit_tokenizer(subject['subject'])
-        self._tokenizer.fit_tokenizer(text['text'])
-        x = self._tokenizer.text_to_sequences(subject['subject'])
-        y = [label2int[label] for label in subject['label']]
-        return x, y
+    # def classify(self, emails: List[NecessaryEmail]):
+    #     classified = []
+    #     self.subject_classifier.fit_tokenizer([email.prepared_subejct for email in emails])
+    #     for email in emails:
+    #         classified.append([email, self.subject_classifier.get_predictions(
+    #             email.prepared_subejct)])  # добавить другие результаты классификации
+    #     return classified
 
-    def _train_naive_bayes(self, x, y):
-        self._naive_bayes_classifier.fit(x, y)
+    def classify(self, subjects: Iterable, texts: Iterable):
+        subj_s = self._data_prepare.texts_to_sequences(self._subject_seq_length, subjects)
+        txt_s = self._data_prepare.texts_to_sequences(self._text_seq_length, texts)
+        preds = []
+        for clsfr, name in [*self._subject_classifiers, (self._subject_LSTM, self._subject_LSTM.model_name)]:
+            preds.append((clsfr.predict(subj_s), name))
+        for clsfr, name in [*self._body_classifiers, (self._body_LSTM, self._body_LSTM.model_name)]:
+            preds.append((clsfr.predict(txt_s), name))
+        return preds
+        # return int2label[self._subject_NB.predict(subj_s[0])], int2label[self._subject_LSTM.predict(subj_s)], \
+        #        int2label[
+        #            self._text_NB.predict(txt_s[0])], int2label[self._body_LSTM.predict(txt_s)]
 
-    def _train_lstm(self, x, y):
-        if self.is_load_model and os.path.exists(self._lstm_classifier.model_file):
-            self._lstm_classifier.load_model()
-        else:
-            self._lstm_classifier.build_model(self._tokenizer.get_embedding_matrix())
 
-        if self.is_load_weigth and os.path.exists(self._lstm_classifier.weights_file):
-            self._lstm_classifier.load_weights()
-        else:
-            self._lstm_classifier.train(x, y)
-
-    def _train_neigbors(self, x, y):
-        x = x.reshape(-1, 1)
-        # y = y.reshape(-1, 1)
-        self._neighbors.fit(x,y)
-
-    def _print_statistics(self, predictions, y_test):
-        print(f"accuracy score - {accuracy_score(predictions, y_test)} precision score {precision_score(predictions,y_test)} recall score - {recall_score(predictions,y_test)}")
-        report=classification_report(y_test,predictions,target_names=["Not Spam","Spam"])
-        print(report)
-
-    def _test_naive_bayes(self, x_test, y_test):
-        # print("Naive Bayes")
-        predictions = list(tqdm((self._naive_bayes_classifier.predict(x) for x in x_test),"Naive Bayes"))
-        self._print_statistics(y_test,predictions)
-
-    def _test_lstm(self, x_test, y_test):
-        # print("Lstm")
-        predictions =[]
-        for x in tqdm(x_test,"Lstm"):
-            x=np.reshape(x,(1,x.shape[0]))
-            predictions.append(self._lstm_classifier.get_predictions(x))
-        self._print_statistics(y_test,predictions)
-
-    def _test_neigbors(self, x_test, y_test):
-        predictions = list(tqdm((self._neighbors.predict(x) for x in x_test), "Neighbors"))
-        self._print_statistics(y_test,predictions)
-
-    def classify(self, emails: List[NecessaryEmail]):
-        classified = []
-        self.subject_classifier.fit_tokenizer([email.prepared_subejct for email in emails])
-        for email in emails:
-            classified.append([email, self.subject_classifier.get_predictions(
-                email.prepared_subejct)])  # добавить другие результаты классификации
-        return classified
+def print_results(mess):
+    subj,body=mess
+    print(f'Тема: {subj[0]}')
+    print(f'Текст: {body[0]}')
+    m_res = spam_filter.classify(*mess)
+    for res, name in m_res:
+        if isinstance(res, Iterable):
+            res = res[0]
+        print(f'{res} - {name}')
 
 
 if __name__ == "__main__":
-    spam_filter = SpamFilter(None,is_load_model=False,is_load_weigth=False,sequence_length=20)
+    spam_filter = SpamFilter(None)
+    m1 = (["Встреча"],['Встреча для предзащиты дипломной работы состоится 23 июня']) # ham
+    m2=(["Ограниченное предложение"],['Сегодня последний день, когда вы можете купить универсальный камнедробитель по '
+                                      'рекордно низкой цене!']) # spam
+    print_results(m1)
+    print_results(m2)
+
+

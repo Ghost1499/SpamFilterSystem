@@ -24,17 +24,18 @@ class LSTMClassifier(object):
     tensorboard: TensorBoard
     _model = Sequential
 
-    def __init__(self, batch_size=64, embedding_size=300,sequence_length=100, train_size=0.8, epochs=40,model_file = "model.json",weights_file = "checkpoint.h5"):
-        self.model_img_file = "model.png"
-        self.model_file = model_file
-        self.weights_file = weights_file
-        # self.navec_path = navec_path
-        self.model_file = "model.json"
-        self.weights_file = "checkpoint.h5"
+    def __init__(self, batch_size=64, embedding_size=300,sequence_length=100, epochs=20,model_name=""):
+        model_file = "model.json"
+        weights_file = "checkpoint.h5"
+        model_img_file = 'model.png'
+        self.model_name=model_name
+        build_name=lambda name,val: f'{name}_{val}'.lower().replace(' ','_')
+        self.model_file = build_name(model_name,model_file)
+        self.weights_file =build_name(model_name,weights_file)
+        self.model_img_file = build_name(model_name,model_img_file)
         self.embedding_size = embedding_size
         self.sequence_length = sequence_length
         self.batch_size = batch_size
-        self.train_size = train_size
         self.epochs = epochs
 
     def build_model(self, embedding_matrix, lstm_units=128,save_model=True):
@@ -101,7 +102,7 @@ class LSTMClassifier(object):
 
         keras.utils.plot_model(self._model,to_file=model_img_file,show_shapes=True)
 
-    def train(self, x: pd.Series, y: pd.Series):
+    def train(self, x: pd.Series, y: pd.Series, validation_size=0.2):
         """
 
         
@@ -110,22 +111,30 @@ class LSTMClassifier(object):
         :param y: Выходные данные
         :return: tuple [loss,accuracy,precision,recall]
         """
-        self.tensorboard = TensorBoard(f"logs/spam_classifier_{time.time()}", histogram_freq=0,
+        self.tensorboard = TensorBoard(f"logs/{self.model_name}_spam_classifier_{time.ctime(time.time())}".replace(" ",'_').replace(":",'-'), histogram_freq=0,
                                        write_graph=True, write_images=False)
         y = to_categorical(y)
-        x_train, x_test, y_train, y_test = self._split_data(x, y)
+        if validation_size>0:
+            x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=validation_size)
+            validation_data=(x_test,y_test)
+        else:
+            x_train=x
+            y_train=y
+            validation_data=None
         model_checkpoint = ModelCheckpoint(self.weights_file,
                                            monitor='precision',
                                            mode='max',
                                            save_best_only=True)
 
         # train the model
-        self._model.fit(x_train, y_train, validation_data=(x_test, y_test),
+        self._model.fit(x_train, y_train,
+                        validation_data=validation_data,
                         batch_size=self.batch_size, epochs=self.epochs,
                         callbacks=[self.tensorboard, model_checkpoint],
                         # callbacks=[self.tensorboard],
                         verbose=1)
-        return self._get_statistics(x_test, y_test)
+        if validation_size>0:
+            return self._get_statistics(x_test, y_test)
 
     @staticmethod
     def _split_data(x, y, train_size=0.8):
@@ -141,7 +150,7 @@ class LSTMClassifier(object):
 
         return loss, accuracy, precision, recall
 
-    def get_predictions(self, sequence):
+    def predict(self, sequence):
         # get the prediction
         prediction = self._model.predict(sequence)
         # one-hot encoded vector, revert using np.argmax

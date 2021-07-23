@@ -1,4 +1,6 @@
 from collections import defaultdict
+from typing import List, Iterable
+
 import numpy as np
 
 class NaiveBayesClassifier(object):
@@ -23,15 +25,17 @@ class NaiveBayesClassifier(object):
 
         return self
 
-    def predict(self, X):
+    def predict(self, X:Iterable):
         # return argmin of classes
-        return min(self.__class_freq.keys(),
-                   key=lambda c: self.__calculate_class_freq(X, c))
+        preds=[]
+        for x in X:
+            preds.append(min(self.__class_freq.keys(),
+                   key=lambda c: self.__calculate_class_freq(x, c)))
+        return preds
 
     def __calculate_class_freq(self, X, clss):
         # calculate frequence for current class
         freq = - np.log(self.__class_freq[clss])
-
         for feat in X:
             freq += - np.log(self.__feat_freq.get((feat, clss), 10 ** (-7)))
         return freq
